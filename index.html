@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custom Object Extractor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="card">
+    <h1>Custom Object Extractor</h1>
+    <p class="lead">Enter your API key and object key to continue. Keep your keys safe&mdash;they stay in your browser.</p>
+    <form id="credentials-form" autocomplete="off">
+      <div class="field">
+        <label for="apiKey">API Key</label>
+        <input id="apiKey" name="apiKey" type="password" placeholder="sk-..." required>
+      </div>
+      <div class="field">
+        <label for="objectKey">Object Key</label>
+        <input id="objectKey" name="objectKey" type="text" placeholder="object_123" required>
+      </div>
+      <button type="submit">Continue</button>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div id="loader" class="loader">
+        <span class="spinner"></span>
+        <span class="loader-text">Fetching records…</span>
+      </div>
+    </form>
+    <div id="filter-bar" class="filters">
+      <div class="filter-field">
+        <label for="filter-field">Field</label>
+        <select id="filter-field-select"></select>
+      </div>
+      <div class="filter-value">
+        <label for="filter-value">Value</label>
+        <select id="filter-value-select"></select>
+      </div>
+      <div class="filter-range" id="filter-range">
+        <label>Date Range (UTC)</label>
+        <div class="range-inputs">
+          <input type="datetime-local" id="filter-date-from">
+          <span class="range-sep">to</span>
+          <input type="datetime-local" id="filter-date-to">
+        </div>
+      </div>
+      <button type="button" id="reset-filter" class="secondary">Reset</button>
+      <button type="button" id="download-csv" class="secondary">Download CSV</button>
+    </div>
+    <div id="pagination" class="pagination">
+      <div class="page-controls">
+        <button type="button" id="prev-page" class="secondary">&larr; Prev</button>
+        <button type="button" id="next-page" class="secondary">Next &rarr;</button>
+      </div>
+      <div class="page-size">
+        <label for="page-size">Rows per page</label>
+        <select id="page-size">
+          <option value="50">50</option>
+          <option value="100" selected>100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+        </select>
+      </div>
+      <div class="page-info" id="page-info">Showing 0 of 0</div>
+    </div>
+    <div id="results" class="table-wrap">
+      <table>
+        <thead id="table-head"></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
