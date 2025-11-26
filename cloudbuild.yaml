@@ -40,3 +40,7 @@ steps:
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/custom-object-extractor:${SHORT_SHA}
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/custom-object-extractor:latest
+
+options:
+  default_logs_bucket_behavior: REGIONAL_USER_OWNED_BUCKET
+  logging: CLOUD_LOGGING_ONLY
