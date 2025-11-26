@@ -4,6 +4,14 @@ substitutions:
   _AR_REPO: containers            # Artifact Registry repo name (create first)
 
 steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud artifacts repositories describe ${_AR_REPO} --location=${_REGION} \
+        || gcloud artifacts repositories create ${_AR_REPO} --repository-format=docker --location=${_REGION} --quiet
+
   - name: gcr.io/cloud-builders/docker
     args:
       - build
