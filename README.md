@@ -23,7 +23,7 @@ node server.js
 ```
 Then open `http://localhost:3000`.
 
-## Usage
+## Usage 
 1) Enter your API key and object key.  
 2) Submit to fetch all pages (continuation tokens handled automatically).  
 3) Use filters to narrow results; `createdAt`/`updatedAt` switch to a date range.  
