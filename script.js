@@ -85,8 +85,8 @@ resetFilterButton?.addEventListener("click", () => {
 });
 
 downloadButton?.addEventListener("click", () => {
-  if (!originalRecords.length) return;
-  downloadCsv(originalRecords, headersCache);
+  if (!filteredRecords.length) return;
+  downloadCsv(filteredRecords, headersCache);
 });
 
 prevPageBtn?.addEventListener("click", () => {
