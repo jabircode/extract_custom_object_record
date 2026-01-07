@@ -12,6 +12,7 @@ const filterDateTo = document.getElementById("filter-date-to");
 const resetFilterButton = document.getElementById("reset-filter");
 const loader = document.getElementById("loader");
 const downloadButton = document.getElementById("download-csv");
+const importButton = document.getElementById("import-contact-list");
 const paginationBar = document.getElementById("pagination");
 const prevPageBtn = document.getElementById("prev-page");
 const nextPageBtn = document.getElementById("next-page");
@@ -23,6 +24,7 @@ let filteredRecords = [];
 let headersCache = [];
 let currentPage = 1;
 let pageSize = parseInt(pageSizeSelect?.value || "100", 10);
+let currentApiKey = "";
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -36,11 +38,16 @@ form.addEventListener("submit", async (event) => {
     return setStatus("Both fields are required.", "error");
   }
 
+  currentApiKey = apiKey;
   setStatus("Fetching records…", "pending");
   showLoader(true);
   results.style.display = "none";
   filterBar.style.display = "none";
   if (downloadButton) downloadButton.style.display = "none";
+  if (importButton) {
+    importButton.style.display = "none";
+    importButton.disabled = true;
+  }
   if (paginationBar) paginationBar.style.display = "none";
 
   try {
@@ -57,6 +64,7 @@ form.addEventListener("submit", async (event) => {
     renderCurrentPage();
     setStatus(`Loaded ${records.length} record${records.length === 1 ? "" : "s"}.`, "ok");
     if (downloadButton) downloadButton.style.display = "inline-flex";
+    if (importButton) importButton.style.display = "inline-flex";
     if (paginationBar) paginationBar.style.display = "flex";
   } catch (err) {
     console.error(err);
@@ -87,6 +95,53 @@ resetFilterButton?.addEventListener("click", () => {
 downloadButton?.addEventListener("click", () => {
   if (!filteredRecords.length) return;
   downloadCsv(filteredRecords, headersCache);
+});
+
+importButton?.addEventListener("click", async () => {
+  const userProfileIds = getFilteredUserProfileIds();
+  if (!userProfileIds.length) {
+    return setStatus("No referencedUserProfileId values found in filtered records.", "error");
+  }
+
+  const groupListName = prompt("Enter contact list name");
+  if (!groupListName || !groupListName.trim()) {
+    return setStatus("Contact list name is required.", "error");
+  }
+
+  if (!currentApiKey) {
+    return setStatus("API key missing. Please reload records.", "error");
+  }
+
+  importButton.disabled = true;
+  setStatus(`Creating contact list "${groupListName.trim()}"…`, "pending");
+  showLoader(true);
+
+  try {
+    const res = await fetch("/api/contact/list", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        apiKey: currentApiKey,
+        groupListName: groupListName.trim(),
+        userProfileIds
+      })
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(text || `Request failed (${res.status})`);
+    }
+
+    setStatus(`Contact list "${groupListName.trim()}" created with ${userProfileIds.length} profile${userProfileIds.length === 1 ? "" : "s"}.`, "ok");
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message || "Failed to create contact list.", "error");
+  } finally {
+    importButton.disabled = false;
+    showLoader(false);
+  }
 });
 
 prevPageBtn?.addEventListener("click", () => {
@@ -215,6 +270,7 @@ function renderCurrentPage() {
 
   updatePaginationUI({ total, totalPages, startIdx, count: pageRecords.length });
   results.style.display = "block";
+  updateImportButtonState();
 }
 
 function updatePaginationUI({ total, totalPages, startIdx, count }) {
@@ -360,4 +416,20 @@ function downloadCsv(records, headers) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function getFilteredUserProfileIds() {
+  const ids = new Set();
+  filteredRecords.forEach(record => {
+    const id = record?.referencedUserProfileId;
+    if (id) ids.add(String(id));
+  });
+  return Array.from(ids);
+}
+
+function updateImportButtonState() {
+  if (!importButton) return;
+  const count = getFilteredUserProfileIds().length;
+  importButton.disabled = count === 0;
+  importButton.title = count === 0 ? "No referencedUserProfileId values found in filtered records." : "";
 }

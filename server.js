@@ -59,6 +59,35 @@ createServer(async (req, res) => {
     return;
   }
 
+  if (req.url === "/api/contact/list" && req.method === "POST") {
+    try {
+      const body = await readJsonBody(req);
+      const { apiKey, groupListName, userProfileIds } = body || {};
+
+      if (!apiKey || !groupListName || !Array.isArray(userProfileIds)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "apiKey, groupListName, and userProfileIds are required" }));
+        return;
+      }
+
+      const upstreamResponse = await postViaAvailableBase({
+        apiKey,
+        payload: {
+          groupListName,
+          userProfileIds
+        }
+      });
+
+      res.writeHead(upstreamResponse.status, { "Content-Type": "application/json" });
+      res.end(upstreamResponse.body || "{}");
+    } catch (err) {
+      console.error(err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Internal server error" }));
+    }
+    return;
+  }
+
   // Serve static assets (index.html, style.css, script.js)
   if (req.method === "GET") {
     const resolvedPath = resolvePath(req.url);
@@ -139,6 +168,45 @@ async function fetchViaAvailableBase({ apiKey, objectKey, continuationToken }) {
   return {
     status: 502,
     body: JSON.stringify(message)
+  };
+}
+
+async function postViaAvailableBase({ apiKey, payload }) {
+  const basesToTry = pinnedBaseUrl ? [pinnedBaseUrl] : BASE_URLS;
+  const errors = [];
+
+  for (const base of basesToTry) {
+    const upstreamUrl = `${base.replace(/\/+$/, "")}/api/contact/list`;
+
+    try {
+      const resp = await fetch(upstreamUrl, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Sleekflow-Api-Key": apiKey
+        },
+        body: JSON.stringify(payload || {})
+      });
+
+      const body = await resp.text();
+
+      if (resp.ok) {
+        pinnedBaseUrl = base;
+        return { status: resp.status, body };
+      }
+
+      errors.push({ base, status: resp.status, body });
+      if (pinnedBaseUrl) break;
+    } catch (err) {
+      errors.push({ base, error: err.message });
+      if (pinnedBaseUrl) break;
+    }
+  }
+
+  return {
+    status: 502,
+    body: JSON.stringify({ error: "All base URLs failed", attempts: errors })
   };
 }
 
