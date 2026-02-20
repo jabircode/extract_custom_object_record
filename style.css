@@ -196,6 +196,104 @@ button:active { transform: translateY(0); box-shadow: 0 8px 18px rgba(56, 189, 2
   color: var(--text);
 }
 
+/* Multi-select dropdown */
+.multi-select {
+  position: relative;
+  min-width: 200px;
+}
+
+.multi-select-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0b1325;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: normal;
+  box-shadow: none;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.multi-select-toggle:hover {
+  border-color: var(--accent);
+  transform: none;
+  filter: none;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+}
+
+.multi-select-toggle:active {
+  transform: none;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+}
+
+.multi-select-arrow {
+  color: var(--muted);
+  font-size: 11px;
+  flex-shrink: 0;
+  transition: transform 150ms ease;
+}
+
+.multi-select.open .multi-select-arrow {
+  transform: rotate(180deg);
+}
+
+.multi-select-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #0b1325;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  z-index: 200;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.multi-select.open .multi-select-dropdown {
+  display: block;
+}
+
+.multi-select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text);
+  user-select: none;
+  transition: background 100ms ease;
+}
+
+.multi-select-item:hover {
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.multi-select-item input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+  border-radius: 3px;
+}
+
 button.secondary {
   width: auto;
   padding: 12px 14px;
