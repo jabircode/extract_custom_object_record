@@ -5,7 +5,10 @@ const tableHead = document.getElementById("table-head");
 const tableBody = document.getElementById("table-body");
 const filterBar = document.getElementById("filter-bar");
 const filterFieldSelect = document.getElementById("filter-field-select");
-const filterValueSelect = document.getElementById("filter-value-select");
+const filterValueMultiSelect = document.getElementById("filter-value-multiselect");
+const filterValueToggle = document.getElementById("filter-value-toggle");
+const filterValueDropdown = document.getElementById("filter-value-dropdown");
+const filterValueLabel = document.getElementById("filter-value-label");
 const filterRange = document.getElementById("filter-range");
 const filterDateFrom = document.getElementById("filter-date-from");
 const filterDateTo = document.getElementById("filter-date-to");
@@ -79,12 +82,21 @@ filterFieldSelect?.addEventListener("change", () => {
   applyFilter();
 });
 
-filterValueSelect?.addEventListener("change", applyFilter);
+filterValueToggle?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  filterValueMultiSelect?.classList.toggle("open");
+});
+
+document.addEventListener("click", (e) => {
+  if (filterValueMultiSelect && !filterValueMultiSelect.contains(e.target)) {
+    filterValueMultiSelect.classList.remove("open");
+  }
+});
 
 resetFilterButton?.addEventListener("click", () => {
   if (!headersCache.length) return;
   filterFieldSelect.value = headersCache[0];
-  populateValueOptions(filterFieldSelect.value, originalRecords, true);
+  populateValueOptions(filterFieldSelect.value, originalRecords);
   clearDateRange();
   filteredRecords = originalRecords;
   currentPage = 1;
@@ -310,7 +322,7 @@ function buildFilters(headers, records) {
   filterBar.style.display = "flex";
 }
 
-function populateValueOptions(field, records, selectAll = false) {
+function populateValueOptions(field, records) {
   const values = new Set();
   records.forEach(r => {
     const value = getFieldValue(r, field);
@@ -320,20 +332,79 @@ function populateValueOptions(field, records, selectAll = false) {
   });
   const sortedValues = Array.from(values).sort((a, b) => a.localeCompare(b));
 
-  filterValueSelect.innerHTML = "";
-  const allOpt = document.createElement("option");
-  allOpt.value = "__ALL__";
-  allOpt.textContent = "All";
-  filterValueSelect.appendChild(allOpt);
+  filterValueDropdown.innerHTML = "";
+
+  // "All" checkbox — checks/unchecks every other item
+  const allItem = createCheckboxItem("__ALL__", "All", true);
+  const allCb = allItem.querySelector("input");
+  allCb.addEventListener("change", () => {
+    filterValueDropdown.querySelectorAll("input[type='checkbox']").forEach(cb => {
+      cb.checked = allCb.checked;
+    });
+    updateMultiSelectLabel();
+    applyFilter();
+  });
+  filterValueDropdown.appendChild(allItem);
 
   sortedValues.forEach(v => {
-    const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
-    filterValueSelect.appendChild(opt);
+    const item = createCheckboxItem(v, v, true);
+    const cb = item.querySelector("input");
+    cb.addEventListener("change", () => {
+      // Sync the "All" checkbox to reflect whether every value is checked
+      const valueBoxes = filterValueDropdown.querySelectorAll("input[type='checkbox']:not([value='__ALL__'])");
+      allCb.checked = Array.from(valueBoxes).every(b => b.checked);
+      updateMultiSelectLabel();
+      applyFilter();
+    });
+    filterValueDropdown.appendChild(item);
   });
 
-  filterValueSelect.value = selectAll ? "__ALL__" : (filterValueSelect.value || "__ALL__");
+  updateMultiSelectLabel();
+}
+
+function createCheckboxItem(value, label, checked) {
+  const item = document.createElement("label");
+  item.className = "multi-select-item";
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.value = value;
+  cb.checked = checked;
+  const text = document.createElement("span");
+  text.textContent = label;
+  item.appendChild(cb);
+  item.appendChild(text);
+  return item;
+}
+
+function getSelectedValues() {
+  if (!filterValueDropdown) return null;
+  const allCb = filterValueDropdown.querySelector("input[value='__ALL__']");
+  if (allCb?.checked) return null; // null → show all records
+  const selected = [];
+  filterValueDropdown.querySelectorAll("input[type='checkbox']:not([value='__ALL__'])").forEach(cb => {
+    if (cb.checked) selected.push(cb.value);
+  });
+  return selected;
+}
+
+function updateMultiSelectLabel() {
+  if (!filterValueLabel || !filterValueDropdown) return;
+  const allCb = filterValueDropdown.querySelector("input[value='__ALL__']");
+  if (allCb?.checked) {
+    filterValueLabel.textContent = "All";
+    return;
+  }
+  const selected = [];
+  filterValueDropdown.querySelectorAll("input[type='checkbox']:not([value='__ALL__'])").forEach(cb => {
+    if (cb.checked) selected.push(cb.value);
+  });
+  if (selected.length === 0) {
+    filterValueLabel.textContent = "None";
+  } else if (selected.length === 1) {
+    filterValueLabel.textContent = selected[0];
+  } else {
+    filterValueLabel.textContent = `${selected.length} selected`;
+  }
 }
 
 function applyFilter() {
@@ -357,10 +428,12 @@ function applyFilter() {
       return true;
     });
   } else {
-    const value = filterValueSelect.value;
-    filtered = value === "__ALL__"
-      ? originalRecords
-      : originalRecords.filter(r => getFieldValue(r, field) === value);
+    const selectedValues = getSelectedValues();
+    if (selectedValues === null || selectedValues.length === 0) {
+      filtered = originalRecords;
+    } else {
+      filtered = originalRecords.filter(r => selectedValues.includes(getFieldValue(r, field)));
+    }
   }
 
   filteredRecords = filtered;
@@ -371,13 +444,13 @@ function applyFilter() {
 
 function handleFieldChange(field, records) {
   if (isDateField(field)) {
-    filterValueSelect.style.display = "none";
+    if (filterValueMultiSelect) filterValueMultiSelect.style.display = "none";
     filterRange.style.display = "flex";
     clearDateRange();
   } else {
-    filterValueSelect.style.display = "block";
+    if (filterValueMultiSelect) filterValueMultiSelect.style.display = "block";
     filterRange.style.display = "none";
-    populateValueOptions(field, records, true);
+    populateValueOptions(field, records);
   }
 }
 

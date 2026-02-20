@@ -32,8 +32,14 @@
         <select id="filter-field-select"></select>
       </div>
       <div class="filter-value">
-        <label for="filter-value">Value</label>
-        <select id="filter-value-select"></select>
+        <label>Value</label>
+        <div class="multi-select" id="filter-value-multiselect">
+          <button type="button" class="multi-select-toggle" id="filter-value-toggle">
+            <span id="filter-value-label">All</span>
+            <span class="multi-select-arrow">&#9660;</span>
+          </button>
+          <div class="multi-select-dropdown" id="filter-value-dropdown"></div>
+        </div>
       </div>
       <div class="filter-range" id="filter-range">
         <label>Date Range (UTC)</label>
