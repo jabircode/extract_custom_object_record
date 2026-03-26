@@ -83,6 +83,20 @@ createServer(async (req, res) => {
     return;
   }
 
+  if (req.url === "/api/timezone" && req.method === "GET") {
+    const forwarded = req.headers["x-forwarded-for"] || "";
+    const ip = forwarded.split(",")[0].trim() || req.socket?.remoteAddress || "";
+    try {
+      const tz = await fetchTimezoneByIp(ip);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ timezone: tz }));
+    } catch {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ timezone: null }));
+    }
+    return;
+  }
+
   if (req.url === "/api/contact/list" && req.method === "POST") {
     try {
       const body = await readJsonBody(req);
@@ -267,6 +281,17 @@ async function fetchContact({ apiKey, userProfileId }) {
     status: 502,
     body: JSON.stringify({ error: "All base URLs failed", attempts: errors })
   };
+}
+
+async function fetchTimezoneByIp(ip) {
+  // Loopback/private IPs have no geolocation; return null so client falls back to browser timezone.
+  if (!ip || ip === "::1" || ip === "127.0.0.1" || ip.startsWith("192.168.") || ip.startsWith("10.")) {
+    return null;
+  }
+  const resp = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=timezone`);
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  return data.timezone || null;
 }
 
 // The upstream expects GET with a JSON body; native fetch disallows GET bodies,
