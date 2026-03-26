@@ -19,20 +19,49 @@ const nextPageBtn = document.getElementById("next-page");
 const pageInfo = document.getElementById("page-info");
 const pageSizeSelect = document.getElementById("page-size");
 
-const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-const utcOffsetLabel = (() => {
-  const offset = -new Date().getTimezoneOffset();
-  const sign = offset >= 0 ? "+" : "-";
-  const abs = Math.abs(offset);
-  const h = String(Math.floor(abs / 60)).padStart(2, "0");
-  const m = String(abs % 60).padStart(2, "0");
-  return `UTC${sign}${h}:${m}`;
-})();
+let userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+let utcOffsetLabel = computeUtcOffsetLabel(userTimezone);
+
+function computeUtcOffsetLabel(tz) {
+  try {
+    const now = new Date();
+    const utcMs = new Date(now.toLocaleString("en-US", { timeZone: "UTC" })).getTime();
+    const tzMs = new Date(now.toLocaleString("en-US", { timeZone: tz })).getTime();
+    const offsetMinutes = (tzMs - utcMs) / 60000;
+    const sign = offsetMinutes >= 0 ? "+" : "-";
+    const abs = Math.abs(offsetMinutes);
+    const h = String(Math.floor(abs / 60)).padStart(2, "0");
+    const m = String(abs % 60).padStart(2, "0");
+    return `UTC${sign}${h}:${m}`;
+  } catch {
+    const offset = -new Date().getTimezoneOffset();
+    const sign = offset >= 0 ? "+" : "-";
+    const abs = Math.abs(offset);
+    const h = String(Math.floor(abs / 60)).padStart(2, "0");
+    const m = String(abs % 60).padStart(2, "0");
+    return `UTC${sign}${h}:${m}`;
+  }
+}
+
+async function fetchIpTimezone() {
+  try {
+    const res = await fetch("/api/timezone");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.timezone) {
+      userTimezone = data.timezone;
+      utcOffsetLabel = computeUtcOffsetLabel(data.timezone);
+    }
+  } catch {
+    // fall back to browser timezone silently
+  }
+}
 
 let originalRecords = [];
 let filteredRecords = [];
 let headersCache = [];
 let contactNameMap = {};
+let datetimePropertyKeys = new Set();
 let currentPage = 1;
 let pageSize = parseInt(pageSizeSelect?.value || "100", 10);
 let currentApiKey = "";
@@ -70,8 +99,12 @@ form.addEventListener("submit", async (event) => {
 
     setStatus("Fetching contact names…", "pending");
     contactNameMap = {};
-    await fetchAllContactNames(apiKey, records);
+    await Promise.all([
+      fetchAllContactNames(apiKey, records),
+      fetchIpTimezone()
+    ]);
     enrichRecordsWithContactNames(records);
+    datetimePropertyKeys = detectDatetimePropertyKeys(records);
 
     originalRecords = records;
     filteredRecords = records;
@@ -258,10 +291,31 @@ function computeHeaders(records) {
   ]);
   records.forEach(r => {
     if (r && r.propertyValues && typeof r.propertyValues === "object") {
-      Object.keys(r.propertyValues).forEach(key => headers.add(key));
+      Object.keys(r.propertyValues).forEach(key => {
+        headers.add(key);
+        if (datetimePropertyKeys.has(key)) headers.add(`${key}_local`);
+      });
     }
   });
   return Array.from(headers);
+}
+
+function detectDatetimePropertyKeys(records) {
+  const keys = new Set();
+  if (!records.length) return keys;
+  const first = records[0];
+  if (first?.propertyValues && typeof first.propertyValues === "object") {
+    for (const [key, value] of Object.entries(first.propertyValues)) {
+      if (looksLikeDateTime(value)) keys.add(key);
+    }
+  }
+  return keys;
+}
+
+function looksLikeDateTime(value) {
+  if (typeof value !== "string" || !value) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return false;
+  return !isNaN(new Date(value).getTime());
 }
 
 function renderCurrentPage() {
@@ -316,6 +370,10 @@ function getFieldValue(record, field) {
   if (field === "updatedAt") return record?.updatedAt ?? "";
   if (field === "createdAt_local") return formatLocalTime(record?.createdAt);
   if (field === "updatedAt_local") return formatLocalTime(record?.updatedAt);
+  if (field.endsWith("_local")) {
+    const base = field.slice(0, -6);
+    if (datetimePropertyKeys.has(base)) return formatLocalTime(record?.propertyValues?.[base]);
+  }
   return record?.propertyValues?.[field] ?? "";
 }
 
@@ -329,6 +387,10 @@ function formatLocalTime(utcString) {
 function getHeaderLabel(h) {
   if (h === "createdAt_local") return `createdAt (${utcOffsetLabel})`;
   if (h === "updatedAt_local") return `updatedAt (${utcOffsetLabel})`;
+  if (h.endsWith("_local")) {
+    const base = h.slice(0, -6);
+    if (datetimePropertyKeys.has(base)) return `${base} (${utcOffsetLabel})`;
+  }
   return h;
 }
 
@@ -429,8 +491,10 @@ function clearDateRange() {
 }
 
 function isDateField(field) {
-  return field === "createdAt" || field === "updatedAt" ||
-         field === "createdAt_local" || field === "updatedAt_local";
+  if (field === "createdAt" || field === "updatedAt" ||
+      field === "createdAt_local" || field === "updatedAt_local") return true;
+  if (field.endsWith("_local")) return datetimePropertyKeys.has(field.slice(0, -6));
+  return datetimePropertyKeys.has(field);
 }
 
 function downloadCsv(records, headers) {
