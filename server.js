@@ -59,6 +59,30 @@ createServer(async (req, res) => {
     return;
   }
 
+  const contactLookupMatch = req.method === "GET" && req.url && /^\/api\/contact\/([^/?]+)(\?.*)?$/.exec(req.url);
+  if (contactLookupMatch) {
+    const userProfileId = contactLookupMatch[1];
+    const urlParams = new URL(req.url, "http://localhost").searchParams;
+    const apiKey = urlParams.get("apiKey");
+
+    if (!apiKey || !userProfileId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "apiKey query param and userProfileId are required" }));
+      return;
+    }
+
+    try {
+      const contactResp = await fetchContact({ apiKey, userProfileId });
+      res.writeHead(contactResp.status, { "Content-Type": "application/json" });
+      res.end(contactResp.body || "{}");
+    } catch (err) {
+      console.error(err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Internal server error" }));
+    }
+    return;
+  }
+
   if (req.url === "/api/contact/list" && req.method === "POST") {
     try {
       const body = await readJsonBody(req);
@@ -210,6 +234,41 @@ function getBasesToTry() {
   return [pinnedBaseUrl, ...BASE_URLS.filter(base => base !== pinnedBaseUrl)];
 }
 
+async function fetchContact({ apiKey, userProfileId }) {
+  const basesToTry = getBasesToTry();
+  const errors = [];
+
+  for (const base of basesToTry) {
+    const upstreamUrl = `${base.replace(/\/+$/, "")}/api/contact/${encodeURIComponent(userProfileId)}`;
+
+    try {
+      const resp = await fetch(upstreamUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "X-Sleekflow-Api-Key": apiKey
+        }
+      });
+
+      const body = await resp.text();
+
+      if (resp.ok) {
+        pinnedBaseUrl = base;
+        return { status: resp.status, body };
+      }
+
+      errors.push({ base, status: resp.status, body });
+    } catch (err) {
+      errors.push({ base, error: err.message });
+    }
+  }
+
+  return {
+    status: 502,
+    body: JSON.stringify({ error: "All base URLs failed", attempts: errors })
+  };
+}
+
 // The upstream expects GET with a JSON body; native fetch disallows GET bodies,
 // so we drop to the https module to send the body with method GET.
 function proxyGetWithBody(urlString, headers = {}, bodyObj = {}) {
@@ -246,3 +305,5 @@ function proxyGetWithBody(urlString, headers = {}, bodyObj = {}) {
     req.end();
   });
 }
+
+

@@ -19,9 +19,20 @@ const nextPageBtn = document.getElementById("next-page");
 const pageInfo = document.getElementById("page-info");
 const pageSizeSelect = document.getElementById("page-size");
 
+const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const utcOffsetLabel = (() => {
+  const offset = -new Date().getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const abs = Math.abs(offset);
+  const h = String(Math.floor(abs / 60)).padStart(2, "0");
+  const m = String(abs % 60).padStart(2, "0");
+  return `UTC${sign}${h}:${m}`;
+})();
+
 let originalRecords = [];
 let filteredRecords = [];
 let headersCache = [];
+let contactNameMap = {};
 let currentPage = 1;
 let pageSize = parseInt(pageSizeSelect?.value || "100", 10);
 let currentApiKey = "";
@@ -56,6 +67,12 @@ form.addEventListener("submit", async (event) => {
       setStatus("No records found.", "error");
       return;
     }
+
+    setStatus("Fetching contact names…", "pending");
+    contactNameMap = {};
+    await fetchAllContactNames(apiKey, records);
+    enrichRecordsWithContactNames(records);
+
     originalRecords = records;
     filteredRecords = records;
     headersCache = computeHeaders(records);
@@ -230,7 +247,15 @@ async function fetchPage({ apiKey, objectKey, continuationToken }) {
 }
 
 function computeHeaders(records) {
-  const headers = new Set(["primaryPropertyValue", "referencedUserProfileId", "createdAt", "updatedAt"]);
+  const headers = new Set([
+    "primaryPropertyValue",
+    "referencedUserProfileId",
+    "contactName",
+    "createdAt",
+    "createdAt_local",
+    "updatedAt",
+    "updatedAt_local"
+  ]);
   records.forEach(r => {
     if (r && r.propertyValues && typeof r.propertyValues === "object") {
       Object.keys(r.propertyValues).forEach(key => headers.add(key));
@@ -245,7 +270,7 @@ function renderCurrentPage() {
   const headRow = document.createElement("tr");
   headers.forEach(h => {
     const th = document.createElement("th");
-    th.textContent = h;
+    th.textContent = getHeaderLabel(h);
     headRow.appendChild(th);
   });
   tableHead.appendChild(headRow);
@@ -286,9 +311,25 @@ function updatePaginationUI({ total, totalPages, startIdx, count }) {
 function getFieldValue(record, field) {
   if (field === "primaryPropertyValue") return record?.primaryPropertyValue ?? "";
   if (field === "referencedUserProfileId") return record?.referencedUserProfileId ?? "";
+  if (field === "contactName") return record?.contactName ?? "";
   if (field === "createdAt") return record?.createdAt ?? "";
   if (field === "updatedAt") return record?.updatedAt ?? "";
+  if (field === "createdAt_local") return formatLocalTime(record?.createdAt);
+  if (field === "updatedAt_local") return formatLocalTime(record?.updatedAt);
   return record?.propertyValues?.[field] ?? "";
+}
+
+function formatLocalTime(utcString) {
+  if (!utcString) return "";
+  const date = new Date(utcString);
+  if (isNaN(date.getTime())) return "";
+  return date.toLocaleString("sv-SE", { timeZone: userTimezone });
+}
+
+function getHeaderLabel(h) {
+  if (h === "createdAt_local") return `createdAt (${utcOffsetLabel})`;
+  if (h === "updatedAt_local") return `updatedAt (${utcOffsetLabel})`;
+  return h;
 }
 
 function buildFilters(headers, records) {
@@ -348,9 +389,10 @@ function applyFilter() {
     const toVal = filterDateTo?.value;
     const from = fromVal ? Date.parse(fromVal) : null;
     const to = toVal ? Date.parse(toVal) : null;
+    const sourceField = field.endsWith("_local") ? field.replace("_local", "") : field;
 
     filtered = originalRecords.filter(r => {
-      const ts = Date.parse(getFieldValue(r, field));
+      const ts = Date.parse(getFieldValue(r, sourceField));
       if (Number.isNaN(ts)) return false;
       if (from !== null && ts < from) return false;
       if (to !== null && ts > to) return false;
@@ -387,7 +429,8 @@ function clearDateRange() {
 }
 
 function isDateField(field) {
-  return field === "createdAt" || field === "updatedAt";
+  return field === "createdAt" || field === "updatedAt" ||
+         field === "createdAt_local" || field === "updatedAt_local";
 }
 
 function downloadCsv(records, headers) {
@@ -399,7 +442,7 @@ function downloadCsv(records, headers) {
   };
 
   const lines = [];
-  lines.push(cols.map(escape).join(","));
+  lines.push(cols.map(col => escape(getHeaderLabel(col))).join(","));
 
   records.forEach(r => {
     const row = cols.map(col => escape(getFieldValue(r, col)));
@@ -432,4 +475,41 @@ function updateImportButtonState() {
   const count = getFilteredUserProfileIds().length;
   importButton.disabled = count === 0;
   importButton.title = count === 0 ? "No referencedUserProfileId values found in filtered records." : "";
+}
+
+async function fetchAllContactNames(apiKey, records) {
+  const ids = new Set();
+  records.forEach(r => {
+    if (r?.referencedUserProfileId) ids.add(String(r.referencedUserProfileId));
+  });
+
+  const idArray = Array.from(ids);
+  if (!idArray.length) return;
+
+  const batchSize = 10;
+  for (let i = 0; i < idArray.length; i += batchSize) {
+    const batch = idArray.slice(i, i + batchSize);
+    await Promise.all(batch.map(id => fetchContactName(apiKey, id)));
+  }
+}
+
+async function fetchContactName(apiKey, userProfileId) {
+  try {
+    const res = await fetch(`/api/contact/${encodeURIComponent(userProfileId)}?apiKey=${encodeURIComponent(apiKey)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const name = [data.FirstName, data.LastName].filter(Boolean).join(" ").trim() || data.PhoneNumber || "";
+    if (name) contactNameMap[userProfileId] = name;
+  } catch {
+    // contact name is best-effort; silently ignore failures
+  }
+}
+
+function enrichRecordsWithContactNames(records) {
+  records.forEach(r => {
+    const id = r?.referencedUserProfileId;
+    if (id && contactNameMap[String(id)]) {
+      r.contactName = contactNameMap[String(id)];
+    }
+  });
 }
