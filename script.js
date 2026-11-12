@@ -16,7 +16,16 @@ const els = {
   schemaBadge: el("schema-badge"),
   filterBar: el("filter-bar"),
   filterField: el("filter-field-select"),
-  filterValue: el("filter-value-select"),
+  filterValueWrap: el("filter-value-multi"),
+  filterValueToggle: el("filter-value-toggle"),
+  filterValueSummary: el("filter-value-summary"),
+  filterValuePopover: el("filter-value-popover"),
+  filterValueSearch: el("filter-value-search"),
+  filterValueOptions: el("filter-value-options"),
+  filterValueChips: el("filter-value-chips"),
+  filterValueAll: el("filter-value-all"),
+  filterValueNone: el("filter-value-none"),
+  filterValueEmpty: el("filter-value-empty"),
   filterRange: el("filter-range"),
   filterFrom: el("filter-date-from"),
   filterTo: el("filter-date-to"),
@@ -46,6 +55,8 @@ const PAGE_LIMIT = 1000; // API maximum, confirmed: limit=2000 returns 400
 const MAX_PAGES = 50; // 50 pages x 1000 = 50k records
 const CONTACT_CONCURRENCY = 6;
 const CONTACT_CAP = 2000;
+// Bucket for records whose field is empty, so "select all" can include them.
+const BLANK_VALUE = "__blank__";
 
 const state = {
   apiKey: "",
@@ -56,7 +67,8 @@ const state = {
   filtered: [],
   page: 1,
   pageSize: Number(els.pageSize?.value || 100),
-  filter: { field: "", value: "__ALL__", from: "", to: "" },
+  filter: { field: "", values: [], from: "", to: "" },
+  filterValues: [],
   contacts: new Map(),
   aborter: null,
   loading: false,
@@ -79,9 +91,17 @@ els.cancelButton.addEventListener("click", cancelFetch);
 els.objectKey.addEventListener("input", debounce(updateObjectHint, 500));
 
 els.filterField.addEventListener("change", onFilterFieldChange);
-els.filterValue.addEventListener("change", () => {
-  state.filter.value = els.filterValue.value;
-  applyFilter();
+els.filterValueToggle.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleFilterPopover();
+});
+els.filterValueSearch.addEventListener("input", renderFilterValues);
+els.filterValueAll.addEventListener("click", selectAllVisibleFilterValues);
+els.filterValueNone.addEventListener("click", clearFilterValues);
+els.filterValuePopover.addEventListener("click", (event) => event.stopPropagation());
+document.addEventListener("click", () => closeFilterPopover());
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeFilterPopover();
 });
 els.filterFrom.addEventListener("change", onDateRangeChange);
 els.filterTo.addEventListener("change", onDateRangeChange);
@@ -317,7 +337,9 @@ function resetResults() {
   state.seen = new Set();
   state.urlColumns = [];
   state.urlColumn = "";
-  state.filter = { field: "", value: "__ALL__", from: "", to: "" };
+  state.filter = { field: "", values: [], from: "", to: "" };
+  state.filterValues = [];
+  closeFilterPopover();
   els.schemaBadge.hidden = true;
   els.objectHint.textContent = "";
   els.objectHint.className = "field-hint";
@@ -642,19 +664,23 @@ function currentColumn() {
 function onFilterFieldChange() {
   state.filter.field = els.filterField.value;
   state.page = 1;
+  closeFilterPopover();
 
   const column = currentColumn();
   if (!column) return;
 
   if (isDateColumn(column)) {
-    els.filterValue.style.display = "none";
+    els.filterValueWrap.style.display = "none";
     els.filterRange.style.display = "flex";
     els.filterFrom.value = "";
     els.filterTo.value = "";
     state.filter.from = "";
     state.filter.to = "";
+    state.filter.values = [];
+    state.filterValues = [];
+    updateFilterSummary();
   } else {
-    els.filterValue.style.display = "block";
+    els.filterValueWrap.style.display = "block";
     els.filterRange.style.display = "none";
     populateFilterValues(column);
   }
@@ -676,23 +702,165 @@ function populateFilterValues(column) {
     }
   }
 
-  const sorted = [...values].sort((a, b) => a.localeCompare(b));
-  els.filterValue.innerHTML = "";
+  const hasBlank = state.records.some(
+    (record) => normalizeFilterValue(cellValue(record, column)) === BLANK_VALUE,
+  );
+  if (hasBlank) values.add(BLANK_VALUE);
 
-  const all = document.createElement("option");
-  all.value = "__ALL__";
-  all.textContent = "All";
-  els.filterValue.appendChild(all);
+  state.filterValues = orderFilterValues([...values]);
+  state.filter.values = [];
+  els.filterValueSearch.value = "";
+  renderFilterValues();
+  updateFilterSummary();
+}
 
-  for (const value of sorted) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = value;
-    els.filterValue.appendChild(option);
+function normalizeFilterValue(value) {
+  if (value === null || value === undefined || value === "") return BLANK_VALUE;
+  return String(value);
+}
+
+function filterValueLabel(value) {
+  return value === BLANK_VALUE ? "(blank)" : value;
+}
+
+function orderFilterValues(values) {
+  const rest = values
+    .filter((value) => value !== BLANK_VALUE)
+    .sort((a, b) => a.localeCompare(b));
+  return values.includes(BLANK_VALUE) ? [BLANK_VALUE, ...rest] : rest;
+}
+
+function visibleFilterValues() {
+  const term = els.filterValueSearch.value.trim().toLowerCase();
+  if (!term) return state.filterValues;
+  return state.filterValues.filter((value) =>
+    value.toLowerCase().includes(term),
+  );
+}
+
+// Renders the checkbox list for the current field. Kept separate from
+// filtering so the search box only narrows what is shown, never the records.
+function renderFilterValues() {
+  const selected = new Set(state.filter.values);
+  const matches = visibleFilterValues();
+
+  els.filterValueOptions.innerHTML = "";
+  els.filterValueEmpty.hidden = matches.length > 0;
+
+  for (const value of matches) {
+    const row = document.createElement("label");
+    row.className = "multiselect-option";
+
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.value = value;
+    box.checked = selected.has(value);
+    box.addEventListener("change", () => setFilterValue(value, box.checked));
+
+    const text = document.createElement("span");
+    text.textContent = filterValueLabel(value);
+
+    row.append(box, text);
+    els.filterValueOptions.appendChild(row);
+  }
+}
+
+function setFilterValue(value, checked) {
+  const selected = new Set(state.filter.values);
+  if (checked) selected.add(value);
+  else selected.delete(value);
+  state.filter.values = [...selected];
+  updateFilterSummary();
+  applyFilter();
+}
+
+function updateFilterSummary() {
+  const selected = state.filter.values;
+
+  if (selected.length === 0) {
+    els.filterValueSummary.textContent = "All";
+    els.filterValueSummary.dataset.state = "all";
+  } else if (selected.length === 1) {
+    els.filterValueSummary.textContent = filterValueLabel(selected[0]);
+    els.filterValueSummary.dataset.state = "some";
+  } else {
+    els.filterValueSummary.textContent = `${selected.length} selected`;
+    els.filterValueSummary.dataset.state = "some";
   }
 
-  els.filterValue.value = "__ALL__";
-  state.filter.value = "__ALL__";
+  els.filterValueChips.innerHTML = "";
+  const MAX_CHIPS = 6;
+
+  if (selected.length > 0) {
+    const caption = document.createElement("span");
+    caption.className = "multiselect-chips-label";
+    caption.textContent = "Selected:";
+    els.filterValueChips.appendChild(caption);
+  }
+
+  for (const value of selected.slice(0, MAX_CHIPS)) {
+    const chip = document.createElement("span");
+    chip.className = "multiselect-chip";
+
+    const label = document.createElement("span");
+    label.textContent = filterValueLabel(value);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "multiselect-chip-remove";
+    remove.setAttribute("aria-label", `Remove ${filterValueLabel(value)}`);
+    remove.textContent = "\u00d7";
+    remove.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setFilterValue(value, false);
+      renderFilterValues();
+    });
+
+    chip.append(label, remove);
+    els.filterValueChips.appendChild(chip);
+  }
+
+  if (selected.length > MAX_CHIPS) {
+    const more = document.createElement("span");
+    more.className = "multiselect-chip more";
+    more.textContent = `+${selected.length - MAX_CHIPS} more`;
+    els.filterValueChips.appendChild(more);
+  }
+
+  els.filterValueChips.hidden = selected.length === 0;
+}
+
+function openFilterPopover() {
+  els.filterValuePopover.hidden = false;
+  els.filterValueToggle.setAttribute("aria-expanded", "true");
+  renderFilterValues();
+  els.filterValueSearch.focus();
+}
+
+function closeFilterPopover() {
+  if (!els.filterValuePopover || els.filterValuePopover.hidden) return;
+  els.filterValuePopover.hidden = true;
+  els.filterValueToggle.setAttribute("aria-expanded", "false");
+}
+
+function toggleFilterPopover() {
+  if (els.filterValuePopover.hidden) openFilterPopover();
+  else closeFilterPopover();
+}
+
+function selectAllVisibleFilterValues() {
+  const selected = new Set([...state.filter.values, ...visibleFilterValues()]);
+  state.filter.values = [...selected];
+  renderFilterValues();
+  updateFilterSummary();
+  applyFilter();
+}
+
+function clearFilterValues() {
+  state.filter.values = [];
+  renderFilterValues();
+  updateFilterSummary();
+  applyFilter();
 }
 
 function onDateRangeChange() {
@@ -726,35 +894,43 @@ function applyFilter() {
       if (to !== null && timestamp > to) return false;
       return true;
     });
-  } else if (state.filter.value === "__ALL__") {
+  } else if (state.filter.values.length === 0) {
     state.filtered = state.records;
   } else {
-    const wanted = String(state.filter.value);
-    state.filtered = state.records.filter(
-      (record) => String(cellValue(record, column)) === wanted,
+    const wanted = new Set(state.filter.values);
+    state.filtered = state.records.filter((record) =>
+      wanted.has(normalizeFilterValue(cellValue(record, column))),
     );
   }
 
   state.page = 1;
   render();
+
+  const selectedCount = isDateColumn(column) ? 0 : state.filter.values.length;
+  const suffix =
+    selectedCount > 1
+      ? ` ${selectedCount} values selected.`
+      : selectedCount === 1
+        ? ` Filtered to "${filterValueLabel(state.filter.values[0])}".`
+        : "";
   setStatus(
-    `Showing ${state.filtered.length} of ${state.records.length} records.`,
+    `Showing ${state.filtered.length} of ${state.records.length} records.${suffix}`,
     "ok",
   );
 }
 
 function resetFilter() {
   if (!state.records.length) return;
-  state.filter = { field: state.columns[0]?.key || "", value: "__ALL__", from: "", to: "" };
+  state.filter = { field: state.columns[0]?.key || "", values: [], from: "", to: "" };
   els.filterField.value = state.filter.field;
   els.filterFrom.value = "";
   els.filterTo.value = "";
+  els.filterValueSearch.value = "";
   els.filtered = state.records;
   state.page = 1;
   onFilterFieldChange();
   setStatus(`Showing ${state.records.length} records.`, "ok");
 }
-
 function isDateColumn(column) {
   return column.type === "datetime" || column.key === "createdAt" || column.key === "updatedAt";
 }

@@ -418,3 +418,226 @@ button:disabled:hover {
   transform: none;
   filter: none;
 }
+
+/* ------------------------------------------------- multi-select filter */
+.filter-value {
+  position: relative;
+}
+
+.multiselect {
+  position: relative;
+}
+
+.multiselect-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0b1325;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  box-shadow: none;
+}
+
+.multiselect-toggle:hover {
+  transform: none;
+  filter: none;
+  border-color: var(--accent);
+}
+
+.multiselect-toggle[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+
+.multiselect-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiselect-summary[data-state="all"] {
+  color: var(--muted);
+}
+
+.multiselect-caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--muted);
+}
+
+.multiselect-popover[hidden] {
+  display: none;
+}
+
+.multiselect-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 100%;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #0b1325;
+  box-shadow: var(--shadow);
+}
+
+.multiselect-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.multiselect-toolbar.actions {
+  padding: 6px 4px 2px;
+  justify-content: flex-end;
+}
+
+.multiselect-toolbar input[type="search"] {
+  flex: 1;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0f172a;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.multiselect-toolbar button {
+  width: auto;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.multiselect-toolbar button:hover {
+  transform: none;
+  filter: none;
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.multiselect-options {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+
+.multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.multiselect-option:hover {
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.multiselect-option input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.multiselect-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiselect-empty {
+  margin: 8px 4px 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.multiselect-empty[hidden] {
+  display: none;
+}
+
+.multiselect-chips[hidden] {
+  display: none;
+}
+
+.filters .multiselect-chips {
+  flex-basis: 100%;
+}
+
+.multiselect-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.multiselect-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 3px 4px 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.14);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.multiselect-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiselect-chip.more {
+  padding: 3px 9px;
+  border-color: var(--border);
+  background: #0b1325;
+  color: var(--muted);
+}
+
+.multiselect-chip-remove {
+  width: auto;
+  padding: 0 4px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.multiselect-chip-remove:hover {
+  transform: none;
+  filter: none;
+  color: var(--text);
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.multiselect-chips-label {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}

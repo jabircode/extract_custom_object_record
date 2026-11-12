@@ -55,8 +55,43 @@
           <select id="filter-field-select"></select>
         </div>
         <div class="filter-value">
-          <label for="filter-value">Value</label>
-          <select id="filter-value-select"></select>
+          <label for="filter-value-toggle">Value</label>
+          <div class="multiselect" id="filter-value-multi">
+            <button
+              type="button"
+              id="filter-value-toggle"
+              class="multiselect-toggle"
+              aria-expanded="false"
+              aria-haspopup="true"
+            >
+              <span class="multiselect-summary" id="filter-value-summary">All</span>
+              <span class="multiselect-caret" aria-hidden="true"></span>
+            </button>
+            <div class="multiselect-popover" id="filter-value-popover" hidden>
+              <div class="multiselect-toolbar">
+                <input
+                  type="search"
+                  id="filter-value-search"
+                  placeholder="Search values…"
+                  aria-label="Search filter values"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="multiselect-toolbar actions">
+                <button type="button" id="filter-value-all">Select all</button>
+                <button type="button" id="filter-value-none">Clear</button>
+              </div>
+              <div
+                class="multiselect-options"
+                id="filter-value-options"
+                role="group"
+                aria-label="Filter values"
+              ></div>
+              <p class="multiselect-empty" id="filter-value-empty" hidden>
+                No matching values
+              </p>
+            </div>
+          </div>
         </div>
         <div class="filter-range" id="filter-range">
           <label>Date Range (UTC)</label>
@@ -80,6 +115,7 @@
             Import filtered record as contact list
           </button>
         </div>
+        <div class="multiselect-chips" id="filter-value-chips" hidden></div>
         <div id="url-feature" class="url-feature" style="display: none">
           <div class="filter-field">
             <label for="url-column-select">URL column</label>

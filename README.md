@@ -21,7 +21,9 @@ continuation tokens, and view, filter, and export them in the browser.
   loaded, marks it `partial`, and only then enables filtering.
 - **Continuation-token paging** until exhaustion (hard cap 50 pages × 1000 = 50k
   records, with a warning when the cap is hit).
-- **Filters**: exact-value dropdown for text/choice/boolean fields, UTC date range
+- **Filters**: multi-select value picker for text/choice/boolean fields — checkbox
+  list with search, `Select all` / `Clear`, removable chips, and a `(blank)`
+  bucket so records with an empty field stay reachable — plus a UTC date range
   for datetime fields.
 - **Contact enrichment** runs after the table renders, so large objects are usable
   immediately; names are cached for the session.
