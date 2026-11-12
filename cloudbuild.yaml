@@ -44,6 +44,8 @@ steps:
       - --platform
       - managed
       - --allow-unauthenticated
+      - --max-instances
+      - "1"
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/custom-object-extractor:${SHORT_SHA}

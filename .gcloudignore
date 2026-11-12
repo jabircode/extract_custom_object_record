@@ -1,0 +1,6 @@
+# Keep the upload small; runtime has no npm dependencies (jszip comes from a CDN).
+node_modules/
+.github/
+.git/
+*.log
+.DS_Store
