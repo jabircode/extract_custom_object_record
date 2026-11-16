@@ -29,6 +29,11 @@ continuation tokens, and view, filter, and export them in the browser.
   immediately; names are cached for the session.
 - **CSV export** of the filtered dataset (BOM + formula-injection escaping),
   **file download** as a ZIP, and **contact-list import** from the filtered records.
+  ZIP entries keep the upstream filename and extension (resolved through the
+  proxy's redirect, else sniffed from the bytes) and are prefixed with the row's
+  primary value, so `earn-SC08G00003848` becomes
+  `001_earn-SC08G00003848_1566641092173235.jpg`. Files that fail to fetch are
+  listed in `download-errors.txt` inside the same ZIP.
 - **Regional failover** across SleekFlow base URLs, pinning the first healthy one.
 
 ## Requirements

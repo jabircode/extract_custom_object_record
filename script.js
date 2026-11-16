@@ -1071,8 +1071,9 @@ async function downloadImages(records) {
 
   const total = withFiles.length;
   const zip = new JSZip();
+  const taken = new Set();
+  const failures = [];
   let completed = 0;
-  let failed = 0;
 
   showProgress(true);
   setProgress(0, total, "Downloading");
@@ -1084,11 +1085,12 @@ async function downloadImages(records) {
       const url = String(cellValue(record, column) || "").trim();
       const index = withFiles.indexOf(record) + 1;
       try {
-        const blob = await fetchFile(url);
-        zip.file(fileName(url, index), blob);
+        const file = await fetchFile(url);
+        const name = await fileName({ url, index, record, ...file });
+        zip.file(uniqueName(name, taken), file.blob);
       } catch (err) {
         console.error("File fetch failed", url, err);
-        failed += 1;
+        failures.push({ url, message: err.message || String(err) });
       } finally {
         completed += 1;
         setProgress(completed, total, "Downloading");
@@ -1099,6 +1101,15 @@ async function downloadImages(records) {
   await Promise.all(
     Array.from({ length: Math.min(4, total) }, () => worker()),
   );
+
+  if (failures.length) {
+    zip.file(
+      "download-errors.txt",
+      `${failures
+        .map((failure, i) => `${i + 1}. ${failure.url}\n   ${failure.message}`)
+        .join("\n\n")}\n`,
+    );
+  }
 
   setProgress(total, total, "Compressing");
   const blob = await zip.generateAsync({ type: "blob" });
@@ -1113,8 +1124,12 @@ async function downloadImages(records) {
 
   showProgress(false);
   setStatus(
-    `Downloaded ${plural(total - failed, "file")}${failed ? `, ${failed} failed` : ""}.`,
-    failed ? "error" : "ok",
+    `Downloaded ${plural(total - failures.length, "file")} as a ZIP${
+      failures.length
+        ? `, ${failures.length} failed — see download-errors.txt`
+        : ""
+    }.`,
+    failures.length ? "error" : "ok",
   );
 }
 
@@ -1124,18 +1139,129 @@ async function fetchFile(url) {
     const detail = await res.text().catch(() => "");
     throw new Error(`File fetch failed (${res.status}) ${detail}`.trim());
   }
-  return res.blob();
+  return {
+    // The proxy follows the upstream redirect, so its Content-Disposition
+    // carries the real filename ("1566641092173235.jpg") even when the record
+    // URL itself ends in a bare UUID.
+    dispositionName: fileNameFromDisposition(
+      res.headers.get("content-disposition"),
+    ),
+    blob: await res.blob(),
+  };
 }
 
-function fileName(url, index) {
+function fileNameFromDisposition(value) {
+  if (!value) return "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(value);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1].trim().replace(/^"|"$/g, ""));
+    } catch {
+      /* fall through to the plain form */
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(value);
+  return plain ? plain[1].trim() : "";
+}
+
+// Fallback when neither the record URL nor the proxy knew the file type: the
+// proxy serves everything as application/octet-stream, so inspect the bytes.
+const EXT_BY_TYPE = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/heic": "heic",
+  "image/heif": "heic",
+  "application/pdf": "pdf",
+  "text/plain": "txt",
+  "text/csv": "csv",
+  "application/json": "json",
+  "application/zip": "zip",
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+};
+
+async function fileName({ url, index, record, blob, dispositionName }) {
+  const prefix = String(index).padStart(3, "0");
+  const label = slug(record?.primaryPropertyValue, 40);
+
+  const fromHeader = splitFileName(dispositionName);
+  const fromUrl = splitFileName(decodedBaseName(url));
+
+  let stem = fromHeader.stem || fromUrl.stem || label || "file";
+  if (label && !stem.includes(label)) stem = `${label}_${stem}`;
+
+  const extension =
+    fromHeader.ext ||
+    fromUrl.ext ||
+    EXT_BY_TYPE[String(blob.type || "").toLowerCase()] ||
+    (await sniffExtension(blob)) ||
+    "bin";
+
+  return `${slug(`${prefix}_${stem}`, 120) || prefix}.${extension}`;
+}
+
+function uniqueName(name, taken) {
+  const { stem, ext } = splitFileName(name);
+  let candidate = name;
+  let n = 2;
+  while (taken.has(candidate)) {
+    candidate = `${stem}-${n}${ext ? `.${ext}` : ""}`;
+    n += 1;
+  }
+  taken.add(candidate);
+  return candidate;
+}
+
+function splitFileName(name) {
+  const clean = String(name || "").trim();
+  const dot = clean.lastIndexOf(".");
+  if (dot <= 0 || dot === clean.length - 1) {
+    return { stem: slug(clean), ext: "" };
+  }
+  const ext = clean.slice(dot + 1).toLowerCase().replace(/[^a-z0-9]/g, "");
+  return {
+    stem: slug(clean.slice(0, dot)),
+    ext: ext.length <= 5 ? ext : "",
+  };
+}
+
+function decodedBaseName(url) {
   try {
     const parts = new URL(url).pathname.split("/").filter(Boolean);
-    const base = parts.length ? parts[parts.length - 1] : "file";
-    const safe = base.replace(/[^a-zA-Z0-9._-]+/g, "_") || "file";
-    return `${String(index).padStart(3, "0")}_${safe}`;
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
   } catch {
-    return `${String(index).padStart(3, "0")}_file`;
+    return "";
   }
+}
+
+function slug(value, max = 60) {
+  return String(value ?? "")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, max);
+}
+
+async function sniffExtension(blob) {
+  let head;
+  try {
+    head = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  } catch {
+    return "";
+  }
+  const at = (offset, bytes) => bytes.every((byte, i) => head[offset + i] === byte);
+
+  if (at(0, [0xff, 0xd8, 0xff])) return "jpg";
+  if (at(0, [0x89, 0x50, 0x4e, 0x47])) return "png";
+  if (at(0, [0x47, 0x49, 0x46, 0x38])) return "gif";
+  if (at(0, [0x25, 0x50, 0x44, 0x46])) return "pdf";
+  if (at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x45, 0x42, 0x50])) {
+    return "webp";
+  }
+  if (at(4, [0x66, 0x74, 0x79, 0x70])) return "heic";
+  return "";
 }
 
 function showProgress(visible) {
